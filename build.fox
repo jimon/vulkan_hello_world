@@ -1,0 +1,23 @@
+includedirs += glfw/include glfw/deps
+defines += _GLFW_WIN32 _GLFW_WGL _GLFW_USE_OPENGL _CRT_SECURE_NO_WARNINGS
+
+build objects(build/glfw/src/context): auto glfw/src/context.c
+build objects(build/glfw/src/init): auto glfw/src/init.c
+build objects(build/glfw/src/input): auto glfw/src/input.c
+build objects(build/glfw/src/monitor): auto glfw/src/monitor.c
+build objects(build/glfw/src/vulkan): auto glfw/src/vulkan.c
+build objects(build/glfw/src/window): auto glfw/src/window.c
+build objects(build/glfw/src/win32_init): auto glfw/src/win32_init.c
+build objects(build/glfw/src/win32_joystick): auto glfw/src/win32_joystick.c
+build objects(build/glfw/src/win32_monitor): auto glfw/src/win32_monitor.c
+build objects(build/glfw/src/win32_time): auto glfw/src/win32_time.c
+build objects(build/glfw/src/win32_tls): auto glfw/src/win32_tls.c
+build objects(build/glfw/src/win32_window): auto glfw/src/win32_window.c
+build objects(build/glfw/src/wgl_context): auto glfw/src/wgl_context.c
+build objects(build/glfw/deps/**/*): auto glfw/deps/**/*.c
+build library(build/glfw_lib): auto objects(build/glfw/**/*)
+
+build objects(build/src/**/*): auto src/**/*.c
+build application(build/app): auto objects(build/src/**/*) | library(build/glfw_lib)
+	libs += glfw_lib gdi32 user32 shell32
+	libdirs += build
