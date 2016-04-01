@@ -15,9 +15,8 @@ build objects(build/glfw/src/win32_tls): auto glfw/src/win32_tls.c
 build objects(build/glfw/src/win32_window): auto glfw/src/win32_window.c
 build objects(build/glfw/src/wgl_context): auto glfw/src/wgl_context.c
 build objects(build/glfw/deps/**/*): auto glfw/deps/**/*.c
-build library(build/glfw_lib): auto objects(build/glfw/**/*)
-
 build objects(build/src/**/*): auto src/**/*.c
-build application(build/app): auto objects(build/src/**/*) | library(build/glfw_lib)
-	libs += glfw_lib gdi32 user32 shell32
-	libdirs += build
+build application(build/app): auto objects(build/**/*) | glfw/**/*.h
+	libs += gdi32 user32 shell32
+	#libs += vulkan-1
+	#libdirs += vulkan
