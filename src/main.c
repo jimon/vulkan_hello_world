@@ -168,10 +168,8 @@ typedef struct
 	VkSwapchainKHR swapchainKHR;
 
 	VkImage images[SWAPCHAIN_IMAGES_MAX];
-	uint32_t images_count;
-
 	VkImageView image_views[SWAPCHAIN_IMAGES_MAX];
-	uint32_t image_views_count;
+	uint32_t images_count;
 } swapchain_t;
 
 swapchain_t figure_out_color_format(VkInstance instance, VkPhysicalDevice physical_device, VkSurfaceKHR surface)
@@ -365,12 +363,131 @@ void create_swapchain(swapchain_t * swapchain, VkInstance instance, VkPhysicalDe
 		exit(1);
 	}
 
+	printf("swapchain images : %i\n", swapchain->images_count);
+
 	result = vkGetSwapchainImagesKHR(device, swapchain->swapchainKHR, &swapchain->images_count, swapchain->images);
 	if(result != VK_SUCCESS)
 	{
 		printf("failed to get swapchain images: %i\n", result);
 		exit(1);
 	}
+}
+
+// Create an image memory barrier for changing the layout of
+// an image and put it into an active command buffer
+// See chapter 11.4 "Image Layout" for details
+
+void setImageLayout(
+	VkCommandBuffer cmdbuffer,
+	VkImage image,
+	VkImageAspectFlags aspectMask,
+	VkImageLayout oldImageLayout,
+	VkImageLayout newImageLayout,
+	VkImageSubresourceRange subresourceRange)
+{
+	// Create an image barrier object
+	VkImageMemoryBarrier imageMemoryBarrier = {0};
+	imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	imageMemoryBarrier.pNext = NULL;
+	imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageMemoryBarrier.oldLayout = oldImageLayout;
+	imageMemoryBarrier.newLayout = newImageLayout;
+	imageMemoryBarrier.image = image;
+	imageMemoryBarrier.subresourceRange = subresourceRange;
+
+	// Source layouts (old)
+
+	// Undefined layout
+	// Only allowed as initial layout!
+	// Make sure any writes to the image have been finished
+	if (oldImageLayout == VK_IMAGE_LAYOUT_PREINITIALIZED)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+	}
+
+	// Old layout is color attachment
+	// Make sure any writes to the color buffer have been finished
+	if (oldImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	}
+
+	// Old layout is depth/stencil attachment
+	// Make sure any writes to the depth/stencil buffer have been finished
+	if (oldImageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	}
+
+	// Old layout is transfer source
+	// Make sure any reads from the image have been finished
+	if (oldImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+
+	// Old layout is shader read (sampler, input attachment)
+	// Make sure any shader reads from the image have been finished
+	if (oldImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	}
+
+	// Target layouts (new)
+
+	// New layout is transfer destination (copy, blit)
+	// Make sure any copyies to the image have been finished
+	if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	}
+
+	// New layout is transfer source (copy, blit)
+	// Make sure any reads from and writes to the image have been finished
+	if (newImageLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = imageMemoryBarrier.srcAccessMask | VK_ACCESS_TRANSFER_READ_BIT;
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+
+	// New layout is color attachment
+	// Make sure any writes to the color buffer hav been finished
+	if (newImageLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+
+	// New layout is depth attachment
+	// Make sure any writes to depth/stencil buffer have been finished
+	if (newImageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+	{
+		imageMemoryBarrier.dstAccessMask = imageMemoryBarrier.dstAccessMask | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	}
+
+	// New layout is shader read (sampler, input attachment)
+	// Make sure any writes to the image have been finished
+	if (newImageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		imageMemoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	}
+
+	// Put barrier on top
+	VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+	// Put barrier inside setup command buffer
+	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)glfwGetInstanceProcAddress(NULL, "vkCmdPipelineBarrier");
+	vkCmdPipelineBarrier(
+		cmdbuffer,
+		srcStageFlags,
+		destStageFlags,
+		0,
+		0, NULL,
+		0, NULL,
+		1, &imageMemoryBarrier);
 }
 
 int main()
@@ -459,8 +576,17 @@ int main()
 		exit(1);
 	}
 
+	PFN_vkCreateImageView vkCreateImageView = (PFN_vkCreateImageView)glfwGetInstanceProcAddress(NULL, "vkCreateImageView");
 	for(uint32_t i = 0; i < swapchain.images_count; ++i)
 	{
+		VkImageSubresourceRange subresourceRange = {0};
+		subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		subresourceRange.baseMipLevel = 0;
+		subresourceRange.levelCount = 1;
+		subresourceRange.layerCount = 1;
+
+		setImageLayout(cmd, swapchain.images[i], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);
+
 		VkImageViewCreateInfo colorAttachmentView = {0};
 		colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		colorAttachmentView.pNext = NULL;
@@ -476,19 +602,14 @@ int main()
 		colorAttachmentView.subresourceRange.layerCount = 1;
 		colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		colorAttachmentView.flags = 0; // mandatory
+		colorAttachmentView.image = swapchain.images[i];
 
-//		setImageLayout(commandBuffer,
-//					   swapChain->buffers[i].image,
-//					   VK_IMAGE_ASPECT_COLOR_BIT,
-//					   VK_IMAGE_LAYOUT_UNDEFINED,
-//					   VK_IMAGE_LAYOUT_PRESET_SRC_KHR);
-//		colorAttachmentView.image = swapChain->buffers[i].image;
-//		// Create the view
-//		if (vkCreateImageView(swapChain->device,
-//							  &colorAttachmentView,
-//							  NULL,
-//							  &swapChain->buffers[i].view) != VK_SUCCESS)
-
+		result = vkCreateImageView(device, &colorAttachmentView, NULL, &swapchain.image_views[i]);
+		if(result != VK_SUCCESS)
+		{
+			printf("failed creating image view: %i\n", result);
+			exit(1);
+		}
 	}
 
 
