@@ -411,10 +411,53 @@ int main()
 	swapchain.width = 640; // TODO
 	swapchain.height = 480;
 
-
 	create_swapchain(&swapchain, instance, physical_device, device, surface);
 
+	VkSemaphore present_complete;
+	VkSemaphore render_complete;
 
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {0};
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphoreCreateInfo.pNext = NULL;
+	PFN_vkCreateSemaphore vkCreateSemaphore = (PFN_vkCreateSemaphore)glfwGetInstanceProcAddress(NULL, "vkCreateSemaphore");
+	result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &present_complete);
+	if(result != VK_SUCCESS)
+	{
+		printf("failed creating semaphore: %i\n", result);
+		exit(1);
+	}
+	result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &render_complete);
+	if(result != VK_SUCCESS)
+	{
+		printf("failed creating semaphore: %i\n", result);
+		exit(1);
+	}
+
+	VkCommandPoolCreateInfo cmdPoolCreateInfo = {0};
+	cmdPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	VkCommandPool commandPool;
+	PFN_vkCreateCommandPool vkCreateCommandPool = (PFN_vkCreateCommandPool)glfwGetInstanceProcAddress(NULL, "vkCreateCommandPool");
+	result = vkCreateCommandPool(device, &cmdPoolCreateInfo, NULL, &commandPool);
+	if(result != VK_SUCCESS)
+	{
+		printf("failed creating command pool: %i\n", result);
+		exit(1);
+	}
+
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {0};
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.commandPool = commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+
+	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)glfwGetInstanceProcAddress(NULL, "vkAllocateCommandBuffers");
+	VkCommandBuffer cmd;
+	result = vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &cmd);
+	if(result != VK_SUCCESS)
+	{
+		printf("failed creating command buffer: %i\n", result);
+		exit(1);
+	}
 
 	for(uint32_t i = 0; i < swapchain.images_count; ++i)
 	{
